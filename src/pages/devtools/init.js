@@ -1,12 +1,12 @@
 (function(){
 	"use strict";
 	_gaq.push(['_trackEvent', "DevTools Opened", 'clicked']);
-	
+
 	// Document ready
 	$(document).on("ready", function(){
 		// Load previously stored configs
 		ConfigManager.load();
-		
+
 		// Check if theme exists
 		$.ajax({
 			type: "HEAD",
@@ -18,16 +18,17 @@
 				createPanel( "default" );
 			}
 		});
-		
+
 	});
-	
+
 	// Execute Chrome API to add panels to devtools
 	function createPanel( theme ){
 		chrome.devtools.panels.create("DevKC3Kai",
 			"../../assets/img/logo/16.png",
 			"pages/devtools/themes/"+theme+"/"+theme+".html",
-			function(panel){}
+			function(panel){
+			}
 		);
 	}
-	
+
 })();

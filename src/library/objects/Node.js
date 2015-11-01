@@ -6,21 +6,21 @@ Used by SortieManager
 */
 (function(){
 	"use strict";
-	
+
 	window.KC3Node = function(sortie_id, id, UTCTime){
 		this.sortie = (sortie_id || 0);
 		this.id = (id || 0);
 		this.type = "";
 		this.stime = UTCTime;
 	};
-	
+
 	KC3Node.prototype.defineAsBattle = function( nodeData ){
 		this.type = "battle";
 		this.startNight = false;
-		
+
 		// If passed initial values
 		if(typeof nodeData != "undefined"){
-			
+
 			// If passed raw data from compass
 			//"api_event_id":4,"api_event_kind":1
 			if(typeof nodeData.api_event_kind != "undefined"){
@@ -29,7 +29,7 @@ Used by SortieManager
 				this.eventId = nodeData.api_event_id;
 				this.gaugeDamage = 0; // calculate this on result screen. make it fair :D
 			}
-			
+
 			// If passed formatted enemy list from PVP
 			if(typeof nodeData.pvp_opponents != "undefined"){
 				this.eships = nodeData.pvp_opponents;
@@ -45,7 +45,7 @@ Used by SortieManager
 		this.mvps = [];
 		return this;
 	};
-	
+
 	KC3Node.prototype.defineAsResource = function( nodeData ){
 		this.type = "resource";
 		this.item = nodeData.api_itemget.api_icon_id;
@@ -58,7 +58,7 @@ Used by SortieManager
 		this.amount = nodeData.api_itemget.api_getcount;
 		return this;
 	};
-	
+
 	KC3Node.prototype.defineAsBounty = function( nodeData ){
 		var
 			maps = JSON.parse(localStorage.maps),
@@ -72,12 +72,12 @@ Used by SortieManager
 			)+".png";
 		};
 		this.amount = nodeData.api_itemget_eo_comment.api_getcount;
-		
+
 		maps[ckey].clear |= (++maps[ckey].kills) >= KC3Meta.gauge(ckey.replace("m",""));
 		localStorage.maps = JSON.stringify(maps);
 		return this;
 	};
-	
+
 	KC3Node.prototype.defineAsMaelstrom = function( nodeData ){
 		this.type = "maelstrom";
 		this.item = nodeData.api_happening.api_icon_id;
@@ -90,7 +90,7 @@ Used by SortieManager
 		this.amount = nodeData.api_happening.api_count;
 		return this;
 	};
-	
+
 	KC3Node.prototype.defineAsSelector = function( nodeData ){
 		console.log("defining as selector", nodeData);
 		this.type = "select";
@@ -107,18 +107,20 @@ Used by SortieManager
 		console.log("choices", this.choices);
 		return this;
 	};
-	
+
 	KC3Node.prototype.defineAsDud = function( nodeData ){
 		this.type = "";
-		
+
 		return this;
 	};
-	
+
 	/* BATTLE FUNCTIONS
 	---------------------------------------------*/
 	KC3Node.prototype.engage = function( battleData, fleetSent ){
+		console.log(battleData);
+		console.log(fleetSent);
 		this.battleDay = battleData;
-		
+
 		var enemyships = battleData.api_ship_ke;
 		if(enemyships[0]==-1){ enemyships.splice(0,1); }
 		this.eships = enemyships;
@@ -127,12 +129,14 @@ Used by SortieManager
 
 		this.supportFlag = (battleData.api_support_flag>0);
 		this.yasenFlag = (battleData.api_midnight_flag>0);
-		
+
 		this.originalHPs = battleData.api_nowhps;
-		
+
 		this.detection = KC3Meta.detection( battleData.api_search[0] );
 		this.engagement = KC3Meta.engagement( battleData.api_formation[2] );
-		
+
+
+
 		var
 			planePhase  = battleData.api_kouku.api_stage1 || {
 				api_touch_plane:[-1,-1],
@@ -144,14 +148,15 @@ Used by SortieManager
 			attackPhase = battleData.api_kouku.api_stage2;
 		this.fcontact = (planePhase.api_touch_plane[0] > -1)?"YES":"NO";
 		this.econtact = (planePhase.api_touch_plane[1] > -1)?"YES":"NO";
-		
+
 		if(typeof planePhase.api_disp_seiku != "undefined"){
 			this.airbattle = KC3Meta.airbattle( planePhase.api_disp_seiku );
 		}else{
 			this.airbattle = ["?", "", "Unknown"];
 		}
-		
+
 		// Fighter phase 1
+		// = Initialization
 		this.planeFighters = {
 			player:[
 				planePhase.api_f_count,
@@ -162,7 +167,9 @@ Used by SortieManager
 				planePhase.api_e_lostcount
 			]
 		};
-		
+
+		this.AACITrigger = battleData.api_kouku.api_stage1.api_air_fire;
+
 		if(
 			this.planeFighters.player[0]===0
 			&& this.planeFighters.abyssal[0]===0
@@ -170,7 +177,7 @@ Used by SortieManager
 		){
 			this.airbattle = ["None", "", "No Air Battle"];
 		}
-		
+
 		// Bombing phase 1
 		this.planeBombers = { player:[0,0], abyssal:[0,0] };
 		if(battleData.api_kouku.api_stage2 !== null){
@@ -179,16 +186,21 @@ Used by SortieManager
 			this.planeBombers.abyssal[0] = battleData.api_kouku.api_stage2.api_e_count;
 			this.planeBombers.abyssal[1] = battleData.api_kouku.api_stage2.api_e_lostcount;
 		}
-		
+
 		// Fighter phase 2
 		if(typeof battleData.api_kouku2 != "undefined"){
 			this.planeFighters.player[1] += battleData.api_kouku2.api_stage1.api_f_lostcount;
 			this.planeFighters.abyssal[1] += battleData.api_kouku2.api_stage1.api_e_lostcount;
-			
+
 			// Bombine phase 2
 			if(battleData.api_kouku2.api_stage2 !== null){
 				this.planeBombers.player[1] += battleData.api_kouku2.api_stage2.api_f_lostcount;
 				this.planeBombers.abyssal[1] += battleData.api_kouku2.api_stage2.api_e_lostcount;
+
+				if(this.AACITrigger != "undefined"){
+					this.AACITrigger = battleData.api_kouku2.api_stage2.api_air_fire;
+				}
+
 			}
 		}
 
@@ -200,12 +212,12 @@ Used by SortieManager
 		var shipNum;
 		var ship;
 		var fleetId = parseInt(fleetSent) || KC3SortieManager.fleetSent;
-		
+
 		if ((typeof PlayerManager.combinedFleet === "undefined") || (PlayerManager.combinedFleet === 0) || fleetId>1){ // single fleet: not combined, or sent fleet is not first fleet
-			result = DA.analyzeRawBattleJS(battleData); 
+			result = DA.analyzeRawBattleJS(battleData);
 			// console.log("Single Fleet");
 			// console.log("analysis result", result);
-			
+
 			// Update enemy
 			for (i = 7; i < 13; i++) {
 				this.enemyHP[i-7] = result[i];
@@ -213,7 +225,7 @@ Used by SortieManager
 					this.enemySunk[i-7] = true;
 				}
 			}
-			
+
 			// Update our fleet
 			fleet = PlayerManager.fleets[fleetId - 1];
 			shipNum = fleet.countShips();
@@ -225,10 +237,10 @@ Used by SortieManager
 			}
 		} else {
 			if (PlayerManager.combinedFleet === 1) {
-				result = DA.analyzeRawCarrierTaskForceBattleJS(battleData); 
+				result = DA.analyzeRawCarrierTaskForceBattleJS(battleData);
 				// console.log("Carrier Task Force");
 			} else {
-				result = DA.analyzeRawSurfaceTaskForceBattleJS(battleData); 
+				result = DA.analyzeRawSurfaceTaskForceBattleJS(battleData);
 				// console.log("Surface Task Force");
 			}
 			// console.log("analysis result", result);
@@ -267,29 +279,29 @@ Used by SortieManager
 		if(this.gaugeDamage > -1)
 			this.gaugeDamage = Math.min(this.originalHPs[7],this.originalHPs[7] - this.enemyHP[0].currentHp);
 	};
-	
+
 	KC3Node.prototype.engageNight = function( nightData, fleetSent, setAsOriginalHP ){
 		if(typeof setAsOriginalHP == "undefined"){ setAsOriginalHP = true; }
-		
+
 		this.battleNight = nightData;
 		this.startNight = (fleetSent !== undefined);
-		
+
 		var enemyships = nightData.api_ship_ke;
 		if(enemyships[0]==-1){ enemyships.splice(0,1); }
 		this.eships = enemyships;
 		this.eformation = this.eformation || nightData.api_formation[1];
 		this.eParam = nightData.api_eParam;
-		
+
 		if(setAsOriginalHP){
 			this.originalHPs = nightData.api_nowhps;
 		}
-		
+
 		this.engagement = this.engagement || KC3Meta.engagement( nightData.api_formation[2] );
 		this.fcontact = (nightData.api_touch_plane[0] > -1)?"YES":"NO";
 		this.econtact = (nightData.api_touch_plane[1] > -1)?"YES":"NO";
 		this.flare = nightData.api_flare_pos[0]; //??
 		this.searchlight = nightData.api_flare_pos[1]; //??
-		
+
 		var PS = window.PS;
 		var DA = PS["KanColle.DamageAnalysis"];
 		var result = null;
@@ -298,24 +310,24 @@ Used by SortieManager
 		var shipNum;
 		var ship;
 		var fleetId = parseInt(fleetSent) || KC3SortieManager.fleetSent;
-		
+
 		// COMBINED FLEET
-		if (PlayerManager.combinedFleet && (fleetId <= 1)) { 
-			result = DA.analyzeRawNightBattleCombinedJS( nightData ); 
+		if (PlayerManager.combinedFleet && (fleetId <= 1)) {
+			result = DA.analyzeRawNightBattleCombinedJS( nightData );
 			fleet = PlayerManager.fleets[1];
 		// SINGLE FLEET
 		} else { // single fleet: not combined, or sent fleet is not first fleet
-			result = DA.analyzeRawNightBattleJS( nightData ); 
+			result = DA.analyzeRawNightBattleJS( nightData );
 			fleet = PlayerManager.fleets[fleetId - 1];
 		}
-		
+
 		for (i = 7; i < 13; i++) {
 			this.enemyHP[i-7] = result[i];
 			if ((result[i] || {currentHp:0}).currentHp <= 0) {
 				this.enemySunk[i-7] = true;
 			}
 		}
-		
+
 		shipNum = fleet.countShips();
 		for(i = 0; i < shipNum; i++) {
 			ship = fleet.ship(i);
@@ -325,22 +337,22 @@ Used by SortieManager
 			this.allyNoDamage &= ship.hp[0]==ship.afterHp[0];
 			ship.afterHp[1] = ship.hp[1];
 		}
-		
+
 		if(this.gaugeDamage > -1)
 			this.gaugeDamage = this.gaugeDamage + Math.min(nightData.api_nowhps[7],nightData.api_nowhps[7] - this.enemyHP[0].currentHp);
 	};
-	
+
 	KC3Node.prototype.night = function( nightData ){
 		this.engageNight(nightData, null, false);
 	};
-	
+
 	KC3Node.prototype.results = function( resultData ){
 		this.rating = resultData.api_win_rank;
 		this.nodalXP = resultData.api_get_base_exp;
 		if(this.allyNoDamage && this.rating === "S")
 			this.rating = "SS";
 		console.log("This battle, have damaged the ally fleet",!this.allyNoDamage);
-		
+
 		if(this.isBoss()) {
 			var
 				maps = JSON.parse(localStorage.maps),
@@ -356,7 +368,7 @@ Used by SortieManager
 			maps[ckey].clear |= resultData.api_first_clear; // obtaining clear once
 			localStorage.maps = JSON.stringify(maps);
 		}
-		
+
 		if(typeof resultData.api_get_ship != "undefined"){
 			this.drop = resultData.api_get_ship.api_ship_id;
 			KC3ShipManager.pendingShipNum += 1;
@@ -365,7 +377,7 @@ Used by SortieManager
 		}else{
 			this.drop = 0;
 		}
-		
+
 		this.mvps = [resultData.api_mvp || 0,resultData.api_mvp_combined || 0].filter(function(x){return !!x;});
 		var fleetDesg = [KC3SortieManager.fleetSent - 1,1];
 		this.lostShips = [resultData.api_lost_flag,resultData.api_lost_flag_combined || [-1,0,0,0,0,0,0]]
@@ -380,7 +392,7 @@ Used by SortieManager
 					}
 				}).filter(function(shipId){return shipId;});
 			});
-		
+
 		//var enemyCVL = [510, 523, 560];
 		//var enemyCV = [512, 525, 528, 565, 579];
 		//var enemySS = [530, 532, 534, 531, 533, 535, 570, 571, 572];
@@ -416,18 +428,18 @@ Used by SortieManager
 							break;
 					}
 				}
-				
+
 			}
 		}
 
 		this.saveBattleOnDB(resultData);
 	};
-	
+
 	KC3Node.prototype.isBoss = function(){
 		//console.log("Meet Boss: " + ((this.eventKind === 1) && (this.eventId === 5)));
 		return ((this.eventKind === 1) && (this.eventId === 5));
 	};
-	
+
 	KC3Node.prototype.saveBattleOnDB = function( resultData ){
 		KC3Database.Battle({
 			sortie_id: (this.sortie || KC3SortieManager.onSortie || 0),
@@ -448,5 +460,5 @@ Used by SortieManager
 			mvp: this.mvps
 		});
 	};
-	
+
 })();
